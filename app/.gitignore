@@ -1,0 +1,5 @@
+node_modules/
+uploads/
+.jwt_secret
+.env
+*.log
