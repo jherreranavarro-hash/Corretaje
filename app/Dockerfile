@@ -6,4 +6,4 @@ COPY . .
 RUN mkdir -p uploads && chown -R node:node /app
 USER node
 EXPOSE 3000
-CMD ["sh", "-c", "node db/setup.js && node db/seed.js && node server/index.js"]
+CMD ["sh", "-c", "node db/setup.js && node db/seed.js && (node db/sync-indices.js || true) && node server/index.js"]

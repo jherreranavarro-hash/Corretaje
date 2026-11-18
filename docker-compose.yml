@@ -1,24 +1,29 @@
-# Alternativa multiplataforma (Windows/macOS/Linux con Docker). NO PROBADA en el entorno de desarrollo (sin Docker disponible).
-#   1) cp .env.docker.example .env      2) editar .env (cambie TODOS los valores)      3) docker compose up -d --build
-#   4) abrir http://localhost:3000
+# Instalación con Docker (Windows / macOS / Linux). Use instalar-docker.ps1 (Windows) o instalar-docker.sh (macOS/Linux):
+# generan el archivo .env con claves aleatorias y levantan todo. Manual: cp .env.docker.example .env, editar, docker compose up -d --build
 services:
   db:
     image: postgres:16
     restart: unless-stopped
-    environment: { POSTGRES_USER: corretaje, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}", POSTGRES_DB: corretaje }
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -U corretaje"], interval: 5s, timeout: 3s, retries: 20 }
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_ADMIN_PASSWORD:?defina POSTGRES_ADMIN_PASSWORD}"
+      APP_DB_PASSWORD: "${APP_DB_PASSWORD:?defina APP_DB_PASSWORD}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d corretaje"], interval: 5s, timeout: 3s, retries: 30 }
   app:
     build: ./app
     restart: unless-stopped
     depends_on: { db: { condition: service_healthy } }
-    ports: ["${PORT:-3000}:3000"]
+    ports: ["${BIND:-127.0.0.1}:${PORT:-3000}:3000"]     # solo este equipo; use BIND=0.0.0.0 para abrirlo a la red
     environment:
-      DATABASE_URL: "postgres://corretaje:${POSTGRES_PASSWORD}@db:5432/corretaje"
+      DATABASE_URL: "postgres://corretaje:${APP_DB_PASSWORD}@db:5432/corretaje"
       JWT_SECRET: "${JWT_SECRET:?defina JWT_SECRET}"
       INTEGRATIONS_KEY: "${INTEGRATIONS_KEY:?defina INTEGRATIONS_KEY}"
       NODE_ENV: production
-      SEED_MODE: "${SEED_MODE:-produccion}"          # "demo" para datos de ejemplo
+      SEED_MODE: "${SEED_MODE:-produccion}"
+      DEMO_PASSWORD: "${DEMO_PASSWORD:-}"
       EMPRESA_NOMBRE: "${EMPRESA_NOMBRE:-Mi Corredora}"
       EMPRESA_RUT: "${EMPRESA_RUT:-}"
       ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
