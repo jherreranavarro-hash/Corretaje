@@ -2,7 +2,14 @@
 
 Venta, arriendo y administración de propiedades con trazabilidad financiera de cada operación. Diseño en los `0*.md`; la aplicación está en `app/` (detalles y límites en `app/README.md`).
 
-## Instalar (Ubuntu / Debian)
+## Plataforma web multi-corredora (SaaS)
+
+Para ofrecerlo por suscripción: una sola instalación en un servidor con dominio y HTTPS, donde usted administra **muchas corredoras** desde `/plataforma`
+(crear corredoras, planes y límites, pagos y vigencias, suspensión, soporte) y cada corredora entra por su enlace (`/c/<identificador>` o subdominio) **con su propio nombre, logo y colores**,
+con sus datos aislados de las demás. Seguridad: 2FA, sesiones revocables, solo lectura al vencer, cuotas por plan, auditoría y más.
+**Guía de despliegue y estado real de cada pieza: [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)** (`docker-compose.prod.yml`, `Caddyfile`, `.env.prod.example`).
+
+## Instalar en un equipo propio (Ubuntu / Debian)
 
 ```bash
 git clone https://github.com/jherreranavarro-hash/Corretaje.git

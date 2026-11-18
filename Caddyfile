@@ -1,0 +1,21 @@
+# HTTPS automático (Let's Encrypt). Dominio principal: https://DOMINIO  →  /plataforma (administrador) y /c/<corredora>
+# Subdominios por corredora (https://<slug>.DOMINIO): certificado bajo demanda, solo para corredoras existentes (la app valida).
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://app:3000/api/interno/dominio?token={$ASK_TOKEN}
+	}
+}
+
+{$DOMINIO} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy app:3000
+}

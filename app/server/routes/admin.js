@@ -1,7 +1,8 @@
 // Administracion del sistema y mantenedores
 const bcrypt = require('bcryptjs');
 const { makeReg } = require('../lib/route');
-const { bad, notFound, audit, round0 } = require('../lib/util');
+const { bad, notFound, audit, round0, validarClave } = require('../lib/util');
+const { cuota } = require('../lib/planes');
 
 // donde se usa cada catalogo (para impedir borrados con uso)
 const USOS = {
@@ -11,7 +12,7 @@ const USOS = {
 };
 const PARAMS = {
   umbral_aprobacion_gasto: 'num', umbral_mantencion: 'num', exigir_mandato: 'bool', pagar_comision_solo_si_cobrada: 'bool', prorratear_canon: 'bool',
-  retencion_honorarios_pct: 'num', min_fotos: 'num', completitud_minima: 'num', dias_alerta_mandato: 'num', variacion_precio_max_pct: 'num',
+  exigir_2fa: 'bool', retencion_honorarios_pct: 'num', min_fotos: 'num', completitud_minima: 'num', dias_alerta_mandato: 'num', variacion_precio_max_pct: 'num',
 };
 
 module.exports = async function (app) {
@@ -136,11 +137,13 @@ module.exports = async function (app) {
     (await c.query('select id, nombre from usuario where empresa_id=$1 and es_agente and activo order by nombre', [u.empresa_id])).rows);
   reg('POST', '/api/usuarios', 'usuarios.crear', async ({ c, u, body }) => {
     if (!body.email || !body.nombre || !body.rol_id) throw bad('email, nombre y rol son obligatorios');
-    if (!body.password || body.password.length < 10) throw bad('La contrasena debe tener al menos 10 caracteres');
+    const ec = validarClave(body.password, body.email); if (ec) throw bad(ec);
+    await cuota(c, u.empresa_id, 'usuarios');
     const rol = (await c.query('select id from rol where id=$1 and empresa_id=$2', [body.rol_id, u.empresa_id])).rows[0];
     if (!rol) throw bad('Rol invalido');
-    const r = await c.query('insert into usuario (empresa_id, rol_id, email, nombre, rut, password_hash, es_agente, sucursal_id) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id, email, nombre',
-      [u.empresa_id, rol.id, body.email.trim(), body.nombre, body.rut || null, await bcrypt.hash(body.password, 10), !!body.es_agente, body.sucursal_id || null]);
+    // el usuario deberá definir su propia clave en el primer ingreso
+    const r = await c.query('insert into usuario (empresa_id, rol_id, email, nombre, rut, password_hash, es_agente, sucursal_id, debe_cambiar_password) values ($1,$2,$3,$4,$5,$6,$7,$8,true) returning id, email, nombre',
+      [u.empresa_id, rol.id, body.email.trim(), body.nombre, body.rut || null, await bcrypt.hash(body.password, 11), !!body.es_agente, body.sucursal_id || null]);
     await audit(c, u, 'usuario', r.rows[0].id, 'crear', null, { email: body.email, rol_id: body.rol_id });
     return r.rows[0];
   });
@@ -154,10 +157,13 @@ module.exports = async function (app) {
       const n = (await c.query(`select count(*)::int n from usuario u join rol r on r.id=u.rol_id where u.empresa_id=$1 and u.activo and '*'=any(r.permisos)`, [u.empresa_id])).rows[0].n;
       if (n <= 1) throw bad('No se puede desactivar ni degradar al ultimo administrador activo');
     }
-    if (body.password) { if (body.password.length < 10) throw bad('Contrasena demasiado corta'); }
+    if (body.password) { const ec = validarClave(body.password, a.email); if (ec) throw bad(ec); }
+    if (body.activo === true && a.activo === false) await cuota(c, u.empresa_id, 'usuarios');
     const r = await c.query(`update usuario set nombre=coalesce($2,nombre), rol_id=coalesce($3,rol_id), activo=coalesce($4,activo), es_agente=coalesce($5,es_agente),
-      password_hash=coalesce($6,password_hash), intentos_fallidos=0, bloqueado_hasta=null where id=$1 returning id, email, nombre, activo`,
-      [a.id, body.nombre, body.rol_id, body.activo, body.es_agente, body.password ? await bcrypt.hash(body.password, 10) : null]);
+      password_hash=coalesce($6,password_hash), intentos_fallidos=0, bloqueado_hasta=null,
+      debe_cambiar_password=case when $6 is not null then true else debe_cambiar_password end,
+      token_version=case when $6 is not null or $4 is false or $3 is not null then token_version+1 else token_version end where id=$1 returning id, email, nombre, activo`,
+      [a.id, body.nombre, body.rol_id, body.activo, body.es_agente, body.password ? await bcrypt.hash(body.password, 11) : null]);
     await audit(c, u, 'usuario', a.id, 'editar', { rol_id: a.rol_id, activo: a.activo }, { rol_id: body.rol_id, activo: body.activo, password_cambiada: !!body.password });
     return r.rows[0];
   });

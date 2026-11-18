@@ -352,6 +352,51 @@ CREATE TABLE IF NOT EXISTS integracion_log (
 );
 CREATE INDEX IF NOT EXISTS ix_integracion_log ON integracion_log (empresa_id, codigo, at DESC);
 
+-- ===================== PLATAFORMA (SaaS multi-corredora) =====================
+-- Tablas de plataforma: sin empresa_id (no pasan por RLS); solo las usa el administrador del sistema.
+CREATE TABLE IF NOT EXISTS plan (
+  id serial PRIMARY KEY, codigo text UNIQUE NOT NULL, nombre text NOT NULL, descripcion text,
+  precio_mensual_clp numeric(18,2) NOT NULL DEFAULT 0, max_usuarios int, max_propiedades int,   -- NULL = ilimitado
+  activo boolean NOT NULL DEFAULT true, created_at timestamptz DEFAULT now()
+);
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS plan_id int REFERENCES plan;
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS estado_suscripcion text NOT NULL DEFAULT 'activa';
+DO $$ BEGIN ALTER TABLE empresa ADD CONSTRAINT empresa_estado_susc CHECK (estado_suscripcion IN ('prueba','activa','vencida','suspendida','cancelada')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS prueba_hasta date;
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS suscripcion_hasta date;
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS marca jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS notas_plataforma text;
+ALTER TABLE usuario ADD COLUMN IF NOT EXISTS token_version int NOT NULL DEFAULT 0;
+ALTER TABLE usuario ADD COLUMN IF NOT EXISTS debe_cambiar_password boolean NOT NULL DEFAULT false;
+ALTER TABLE usuario ADD COLUMN IF NOT EXISTS totp_secret text;       -- cifrado (secretos.js)
+ALTER TABLE usuario ADD COLUMN IF NOT EXISTS totp_activo boolean NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS plataforma_admin (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), email text NOT NULL, nombre text NOT NULL, password_hash text NOT NULL,
+  totp_secret text, totp_activo boolean NOT NULL DEFAULT false, activo boolean NOT NULL DEFAULT true,
+  intentos_fallidos int NOT NULL DEFAULT 0, bloqueado_hasta timestamptz, token_version int NOT NULL DEFAULT 0,
+  ultimo_acceso timestamptz, created_at timestamptz DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_padmin_email ON plataforma_admin (lower(email));
+CREATE TABLE IF NOT EXISTS plataforma_audit (
+  id bigserial PRIMARY KEY, admin_id uuid, accion text NOT NULL, corredora_id uuid, detalle jsonb, ip text, at timestamptz DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS pago_suscripcion (
+  id bigserial PRIMARY KEY, corredora_id uuid NOT NULL REFERENCES empresa, plan_id int REFERENCES plan,
+  monto numeric(18,2) NOT NULL, moneda text NOT NULL DEFAULT 'CLP', fecha date NOT NULL DEFAULT current_date,
+  periodo_desde date, periodo_hasta date, medio text, referencia text, registrado_por uuid, at timestamptz DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS solicitud_contacto (
+  id bigserial PRIMARY KEY, nombre text NOT NULL, empresa text, email text NOT NULL, telefono text, mensaje text,
+  estado text NOT NULL DEFAULT 'nueva' CHECK (estado IN ('nueva','contactada','cliente','descartada')), ip text, at timestamptz DEFAULT now()
+);
+-- Planes iniciales (editables por el administrador del sistema; los precios son de ejemplo)
+INSERT INTO plan (codigo, nombre, descripcion, precio_mensual_clp, max_usuarios, max_propiedades) VALUES
+  ('basico', 'Básico', 'Corredor independiente', 29990, 3, 50),
+  ('profesional', 'Profesional', 'Corredora pequeña', 79990, 10, 300),
+  ('empresa', 'Empresa', 'Sin límites de uso', 199990, NULL, NULL)
+ON CONFLICT (codigo) DO NOTHING;
+
 -- ===================== SEGURIDAD: RLS =====================
 DO $$
 DECLARE t text;

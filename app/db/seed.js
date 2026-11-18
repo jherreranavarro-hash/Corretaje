@@ -127,6 +127,7 @@ module.exports = { seedEmpresa };
 if (require.main === module) {
   const { pool, tx } = require('../server/lib/db');
   (async () => {
+    if (process.env.SEED_MODE === 'none') { console.log('Seed omitido (SEED_MODE=none): las corredoras se crean desde /plataforma.'); return pool.end(); }
     const prod = process.env.SEED_MODE === 'produccion';
     if (process.env.SEED_MODE === 'demo') process.env.SEED_DEMO = '1';
     if (prod) {

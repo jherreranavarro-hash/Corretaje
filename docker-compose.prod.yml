@@ -1,0 +1,49 @@
+# PRODUCCIÓN: plataforma web multi-corredora con HTTPS automático (Caddy). NO PROBADA en el entorno de desarrollo (sin Docker).
+# Requisitos: un servidor con IP pública, un dominio apuntando a él y los puertos 80/443 abiertos. Guía: docs/DESPLIEGUE.md
+#   cp .env.prod.example .env.prod   (completar)   →   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_ADMIN_PASSWORD:?}"
+      APP_DB_PASSWORD: "${APP_DB_PASSWORD:?}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d corretaje"], interval: 5s, timeout: 3s, retries: 30 }
+    # la base NO se publica al exterior
+  app:
+    build: ./app
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    expose: ["3000"]                                   # solo accesible desde Caddy
+    environment:
+      DATABASE_URL: "postgres://corretaje:${APP_DB_PASSWORD}@db:5432/corretaje"
+      JWT_SECRET: "${JWT_SECRET:?}"
+      INTEGRATIONS_KEY: "${INTEGRATIONS_KEY:?}"
+      NODE_ENV: production
+      SEED_MODE: none                                  # las corredoras se crean desde /plataforma
+      BASE_DOMAIN: "${DOMINIO:?}"
+      ASK_TOKEN: "${ASK_TOKEN:?}"
+      TRUST_PROXY: "1"
+    volumes: [uploads:/app/uploads]
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443"]
+    environment: { DOMINIO: "${DOMINIO}", ACME_EMAIL: "${ACME_EMAIL:?}", ASK_TOKEN: "${ASK_TOKEN}" }
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+  respaldo:                                            # respaldo diario de la base, con rotación de 14 días, en el volumen "respaldos"
+    image: postgres:16
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment: { PGPASSWORD: "${POSTGRES_ADMIN_PASSWORD}" }
+    volumes: [respaldos:/respaldos]
+    entrypoint: ["/bin/sh", "-c", "while true; do pg_dump -h db -U postgres -Fc corretaje > /respaldos/corretaje-$$(date +%Y%m%d-%H%M).dump; ls -1t /respaldos/corretaje-*.dump | tail -n +15 | xargs -r rm -f; sleep 86400; done"]
+volumes: { pgdata: {}, uploads: {}, caddy_data: {}, caddy_config: {}, respaldos: {} }

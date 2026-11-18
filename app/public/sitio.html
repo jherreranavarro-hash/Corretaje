@@ -7,17 +7,4 @@ body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(
 .p{font-size:20px;font-weight:700}.m{color:var(--mut);font-size:13px}dialog{max-width:560px;width:92%;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink)}dialog img{width:100%;border-radius:8px}label{display:block;margin:8px 0 3px;font-size:13px;color:var(--mut)}dialog input,dialog textarea{width:100%;box-sizing:border-box}.hp{position:absolute;left:-9999px}</style></head>
 <body><header><h1 id="t">Propiedades</h1></header><main><div class="f"><select id="op"><option value="">Venta y arriendo</option><option value="venta">Venta</option><option value="arriendo">Arriendo</option></select><input id="co" placeholder="Comuna"><select id="dm"><option value="">Dormitorios</option><option>1</option><option>2</option><option>3</option><option>4</option></select><button id="bs">Buscar</button></div><div class="g" id="g"></div></main>
 <dialog id="d"></dialog>
-<script>
-const slug=location.pathname.split('/').pop(),$=s=>document.querySelector(s),e=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const pr=p=>p.moneda==='UF'?Number(p.precio).toLocaleString('es-CL',{maximumFractionDigits:2})+' UF':'$'+Math.round(p.precio).toLocaleString('es-CL');
-let lista=[];
-async function load(){const q=new URLSearchParams({operacion:$('#op').value,comuna:$('#co').value,dormitorios:$('#dm').value});[...q].forEach(([k,v])=>!v&&q.delete(k));
-const r=await fetch(`/public/${slug}/propiedades?`+q);if(!r.ok){$('#g').innerHTML='<p>Empresa no encontrada.</p>';return}const j=await r.json();$('#t').textContent=j.empresa;document.title=j.empresa;lista=j.propiedades;
-$('#g').innerHTML=lista.map((p,i)=>`<div class="c" data-i="${i}"><img src="${e((p.fotos[0]||{}).url||'')}" alt=""><div><div class="p">${e(pr(p))}</div><div>${e(p.titulo)}</div><div class="m">${e(p.comuna||'')} · ${p.dormitorios??'-'}D ${p.banos??'-'}B · ${p.sup_util??'-'} m²</div></div></div>`).join('')||'<p>No hay propiedades publicadas por ahora.</p>'}
-$('#bs').onclick=load;
-$('#g').onclick=ev=>{const c=ev.target.closest('.c');if(!c)return;const p=lista[c.dataset.i];const d=$('#d');
-d.innerHTML=`<img src="${e((p.fotos[0]||{}).url||'')}" alt=""><h2>${e(p.titulo)}</h2><div class="p">${e(pr(p))}</div><p>${e(p.descripcion||'')}</p><form id="cf"><b>Consultar por esta propiedad</b><label>Nombre</label><input name="nombre" required maxlength="120"><label>Email</label><input name="email" type="email"><label>Teléfono</label><input name="telefono"><label>Mensaje</label><textarea name="mensaje" rows="3" maxlength="2000"></textarea><input class="hp" name="sitio_web" tabindex="-1" autocomplete="off"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" name="consentimiento" style="width:auto" required> Acepto que mis datos sean tratados para responder esta consulta.</label><p><button>Enviar</button> <button type="button" id="x" style="background:transparent;color:inherit;border:1px solid var(--line)">Cerrar</button></p><p id="ms" class="m"></p></form>`;
-d.showModal();$('#x').onclick=()=>d.close();$('#cf').onsubmit=async ev=>{ev.preventDefault();const f=new FormData(ev.target),b=Object.fromEntries(f);b.consentimiento=!!f.get('consentimiento');b.codigo=p.codigo;
-const r=await fetch(`/public/${slug}/contacto`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const j=await r.json();$('#ms').textContent=r.ok?'¡Gracias! Te contactaremos pronto.':(j.error||'Error');if(r.ok)ev.target.reset()}};
-load();
-</script></body></html>
+<script src="/js/sitio.js"></script></body></html>

@@ -58,5 +58,14 @@ async function empresaParam(c, empresaId) {
   const e = r.rows[0] || {};
   return { iva_pct: e.iva_pct ?? 19, ...(e.parametros || {}) };
 }
-module.exports = { HttpError, bad, notFound, forbidden, round0, round4, hoy, periodoDe, addDays, addMonths, diasEntre, diasDelMes,
+// Politica de clave: >= 10 caracteres, con letras y numeros, distinta del correo y sin patrones triviales
+function validarClave(p, email = '') {
+  if (typeof p !== 'string' || p.length < 10) return 'La clave debe tener al menos 10 caracteres';
+  if (p.length > 200) return 'Clave demasiado larga';
+  if (!/[A-Za-z]/.test(p) || !/\d/.test(p)) return 'La clave debe combinar letras y numeros';
+  if (email && p.toLowerCase().includes(String(email).split('@')[0].toLowerCase()) && String(email).split('@')[0].length >= 4) return 'La clave no debe contener su usuario';
+  if (/^(.)\1+$/.test(p) || /(1234567890|0123456789|password|contrasena|qwertyuiop)/i.test(p)) return 'Clave demasiado predecible';
+  return null;
+}
+module.exports = { validarClave, HttpError, bad, notFound, forbidden, round0, round4, hoy, periodoDe, addDays, addMonths, diasEntre, diasDelMes,
   validarRut, normalizarRut, nextSeq, valorIndice, aCLP, audit, empresaParam };

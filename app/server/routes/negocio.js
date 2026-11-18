@@ -1,6 +1,7 @@
 // Propiedades, personas, CRM, publicaciones, operaciones y documentos
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const { makeReg, propios } = require('../lib/route');
+const { cuota } = require('../lib/planes');
 const { bad, notFound, forbidden, validarRut, normalizarRut, nextSeq, audit, empresaParam, hoy, round0 } = require('../lib/util');
 const fin = require('../services/finanzas');
 const ops = require('../services/operaciones');
@@ -153,6 +154,7 @@ module.exports = async function (app) {
   });
   reg('POST', '/api/propiedades', 'propiedades.crear', async ({ c, u, body }) => {
     if (!body.direccion) throw bad('La direccion es obligatoria');
+    await cuota(c, u.empresa_id, 'propiedades');
     const n = await nextSeq(c, u.empresa_id, 'propiedad');
     const codigo = body.codigo || 'P-' + String(n).padStart(5, '0');
     const dup = await c.query(`select codigo from propiedad where direccion ilike $1 and deleted_at is null limit 1`, [body.direccion.trim()]);
@@ -493,11 +495,14 @@ module.exports = async function (app) {
     await audit(c, u, 'documento', r.rows[0].id, 'generar', null, { plantilla: pl.tipo, plantilla_revisada_legal: !!pl.revisada_legal_at });
     return { ...r.rows[0], advertencia: pl.revisada_legal_at ? null : 'Plantilla sin revision legal: use como borrador de apoyo' };
   });
-  reg('GET', '/api/documentos/:id/html', 'documentos.ver', async ({ c, params, reply }) => {
+  reg('GET', '/api/documentos/:id/html', 'documentos.ver', async ({ c, u, params, reply }) => {
     const d = (await c.query('select * from documento where id=$1', [params.id])).rows[0];
     if (!d) throw notFound();
     reply.type('text/html; charset=utf-8');
-    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(d.titulo)}</title><style>body{font:14px/1.6 Georgia,serif;max-width:800px;margin:2rem auto;padding:0 1rem}h1{font-size:20px;text-align:center}.pie{margin-top:2rem;font:11px monospace;color:#666}@media print{.noprint{display:none}}</style></head><body>${d.contenido}<p class="pie">Documento ${esc(d.id)} v${d.version} · sha256 ${esc(d.hash)} · estado ${esc(d.estado)}</p></body></html>`;
+    const mk = ((await c.query('select razon_social, marca from empresa where id=$1', [u.empresa_id])).rows[0]) || {};
+    const m = mk.marca || {};
+    const cab = `<div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid ${/^#[0-9a-f]{6}$/i.test(m.color || '') ? m.color : '#333'};padding-bottom:8px;margin-bottom:18px">${m.logo ? `<img src="${esc(m.logo)}" alt="" style="max-height:56px">` : ''}<div><b style="font-size:16px">${esc(m.nombre || mk.razon_social || '')}</b><br><span style="font-size:11px;color:#555">${esc([m.telefono, m.email, m.web].filter(Boolean).join(' · '))}</span></div></div>`;
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(d.titulo)}</title><style>body{font:14px/1.6 Georgia,serif;max-width:800px;margin:2rem auto;padding:0 1rem}h1{font-size:20px;text-align:center}.pie{margin-top:2rem;font:11px monospace;color:#666}@media print{.noprint{display:none}}</style></head><body>${cab}${d.contenido}<p class="pie">Documento ${esc(d.id)} v${d.version} · sha256 ${esc(d.hash)} · estado ${esc(d.estado)}</p></body></html>`;
   });
   reg('POST', '/api/documentos/:id/firmar', 'documentos.editar', async ({ c, u, params, body }) => {
     const d = (await c.query('select * from documento where id=$1', [params.id])).rows[0];
