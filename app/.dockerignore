@@ -1,0 +1,6 @@
+node_modules
+uploads
+.env
+.jwt_secret
+.integrations_key
+*.log

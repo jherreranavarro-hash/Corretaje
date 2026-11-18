@@ -1,0 +1,27 @@
+# Alternativa multiplataforma (Windows/macOS/Linux con Docker). NO PROBADA en el entorno de desarrollo (sin Docker disponible).
+#   1) cp .env.docker.example .env      2) editar .env (cambie TODOS los valores)      3) docker compose up -d --build
+#   4) abrir http://localhost:3000
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment: { POSTGRES_USER: corretaje, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}", POSTGRES_DB: corretaje }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U corretaje"], interval: 5s, timeout: 3s, retries: 20 }
+  app:
+    build: ./app
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    ports: ["${PORT:-3000}:3000"]
+    environment:
+      DATABASE_URL: "postgres://corretaje:${POSTGRES_PASSWORD}@db:5432/corretaje"
+      JWT_SECRET: "${JWT_SECRET:?defina JWT_SECRET}"
+      INTEGRATIONS_KEY: "${INTEGRATIONS_KEY:?defina INTEGRATIONS_KEY}"
+      NODE_ENV: production
+      SEED_MODE: "${SEED_MODE:-produccion}"          # "demo" para datos de ejemplo
+      EMPRESA_NOMBRE: "${EMPRESA_NOMBRE:-Mi Corredora}"
+      EMPRESA_RUT: "${EMPRESA_RUT:-}"
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+    volumes: [uploads:/app/uploads]
+volumes: { pgdata: {}, uploads: {} }

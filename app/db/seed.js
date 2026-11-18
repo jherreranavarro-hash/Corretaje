@@ -61,7 +61,7 @@ const PLANTILLAS = [
 ];
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#dfe7ee"/><g fill="#8aa0b4"><rect x="250" y="170" width="300" height="200"/><polygon points="230,170 400,80 570,170"/></g><text x="400" y="420" font-family="sans-serif" font-size="28" text-anchor="middle" fill="#5b7184">Foto de ejemplo</text></svg>`;
 
-async function seedEmpresa(c, { slug = 'demo', razon = 'Corredora Demo SpA', rut = '76.000.000-0', demo = true, password = process.env.DEMO_PASSWORD || 'Demo-Corretaje-2026' } = {}) {
+async function seedEmpresa(c, { slug = 'demo', razon = 'Corredora Demo SpA', rut = '76.000.000-0', demo = true, soloAdmin = false, adminEmail, password = process.env.DEMO_PASSWORD || 'Demo-Corretaje-2026' } = {}) {
   const e = (await c.query(`insert into empresa (slug, rut, razon_social, parametros) values ($1,$2,$3,$4) returning id`,
     [slug, rut, razon, { umbral_aprobacion_gasto: 500000, umbral_mantencion: 200000, exigir_mandato: true, pagar_comision_solo_si_cobrada: true, prorratear_canon: true,
       retencion_honorarios_pct: 0, min_fotos: 1, completitud_minima: 50, dias_alerta_mandato: 30, variacion_precio_max_pct: 20 }])).rows[0].id;
@@ -72,7 +72,8 @@ async function seedEmpresa(c, { slug = 'demo', razon = 'Corredora Demo SpA', rut
   const hash = await bcrypt.hash(password, 10);
   const usr = {};
   for (const [k, nombre, email, rol, agente] of [['ger', 'Gerencia', `admin@${slug}.cl`, 'Gerente', false], ['ana', 'Ana Rojas', `ana@${slug}.cl`, 'Agente', true], ['luis', 'Luis Pérez', `luis@${slug}.cl`, 'Agente', true],
-    ['adm', 'Carla Soto (Administración)', `adm@${slug}.cl`, 'Administrador de propiedades', false], ['fin', 'Pedro Díaz (Finanzas)', `finanzas@${slug}.cl`, 'Finanzas', false], ['lec', 'Lectura', `lectura@${slug}.cl`, 'Solo lectura', false]])
+    ['adm', 'Carla Soto (Administración)', `adm@${slug}.cl`, 'Administrador de propiedades', false], ['fin', 'Pedro Díaz (Finanzas)', `finanzas@${slug}.cl`, 'Finanzas', false], ['lec', 'Lectura', `lectura@${slug}.cl`, 'Solo lectura', false]]
+    .filter(u => !soloAdmin || u[0] === 'ger').map(u => u[0] === 'ger' && adminEmail ? [u[0], soloAdmin ? 'Administrador' : u[1], adminEmail, u[3], u[4]] : u))
     usr[k] = (await c.query('insert into usuario (empresa_id, sucursal_id, rol_id, email, nombre, password_hash, es_agente) values ($1,$2,$3,$4,$5,$6,$7) returning id', [e, suc, rolId[rol], email, nombre, hash, agente])).rows[0].id;
   for (const x of CATALOGOS) await c.query('insert into catalogo (empresa_id, grupo, codigo, nombre, orden, datos) values ($1,$2,$3,$4,$5,$6)', [e, x.grupo, x.codigo, x.nombre, x.orden, x.datos]);
   for (const [cod, nom, nat, cat, iva, resp] of CONCEPTOS) await c.query('insert into concepto (empresa_id, codigo, nombre, naturaleza, categoria, afecto_iva, requiere_respaldo, es_sistema) values ($1,$2,$3,$4,$5,$6,$7,true)', [e, cod, nom, nat, cat, iva, resp]);
@@ -126,6 +127,17 @@ module.exports = { seedEmpresa };
 if (require.main === module) {
   const { pool, tx } = require('../server/lib/db');
   (async () => {
+    const prod = process.env.SEED_MODE === 'produccion';
+    if (process.env.SEED_MODE === 'demo') process.env.SEED_DEMO = '1';
+    if (prod) {
+      const ex = await pool.query('select 1 from empresa limit 1');
+      if (ex.rows[0]) { console.log('Ya existe una empresa: seed omitido.'); return pool.end(); }
+      const { ADMIN_EMAIL: adminEmail, ADMIN_PASSWORD: password, EMPRESA_SLUG: slug = 'empresa', EMPRESA_NOMBRE: razon = 'Mi Corredora', EMPRESA_RUT: rut } = process.env;
+      if (!adminEmail || !password || password.length < 10 || !rut) throw new Error('Faltan ADMIN_EMAIL, ADMIN_PASSWORD (min. 10) o EMPRESA_RUT');
+      await tx(null, c => seedEmpresa(c, { slug, razon, rut, demo: false, soloAdmin: true, adminEmail, password }));
+      console.log(`Empresa "${razon}" creada. Administrador: ${adminEmail}`);
+      return pool.end();
+    }
     const ex = await pool.query("select id from empresa where slug='demo'");
     if (ex.rows[0]) { console.log('La empresa demo ya existe: seed omitido.'); return pool.end(); }
     const r = await tx(null, c => seedEmpresa(c, { demo: process.env.SEED_DEMO !== '0' }));
@@ -134,5 +146,5 @@ if (require.main === module) {
   ana@demo.cl, luis@demo.cl       (Agentes)    adm@demo.cl (Administración)    finanzas@demo.cl (Finanzas)    lectura@demo.cl (Solo lectura)
 Cambie estas contraseñas antes de usar datos reales. UF/IPC cargados son valores de DEMOSTRACIÓN.`);
     await pool.end();
-  })().catch(e => { console.error(e); process.exit(1); });
+  })().catch(e => { console.error(e.message); process.exit(1); });
 }
